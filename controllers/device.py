@@ -1,7 +1,23 @@
 import time
-
-from controllers import Device
 import serial
+
+class Device(serial.Serial):
+    def __init__(self, port=None, encoding='utf-8', **kwargs):
+        super().__init__(port, **kwargs)
+        self.encoding = encoding
+
+    def read(self, bytes_to_read):
+        # Read from the device
+        bytes_read = super().read(bytes_to_read)
+        return bytes_read.decode(self.encoding)
+
+    def write(self, command):
+        # Send to the device
+        return super().write(command.encode(self.encoding))
+
+    def read_until(self, expected=serial.CR, size=None):
+        line = super().read_until(expected=expected, size=size)
+        return line.decode(self.encoding).strip()
 
 
 class DOProbe(Device):
@@ -69,14 +85,20 @@ class LCTF(Device):
         time.sleep(0.1)
         return self.read()
 
-    def wavelength(self, wavelength=None):
-        if wavelength is None:
-            return self.query('W')
+    @property
+    def wavelength(self):
+        if self._wavelength is None:
+            self._wavelength = self.query('W')
+        return self._wavelength
+
+    @wavelength.setter
+    def wavelength(self, wavelength):
         command = f'W {wavelength}.000'
         self.write(command)
 
         self.query('W')
         self.check_status(command)
+        self._wavelength = wavelength
 
     def check_status(self, check_status):
         try_count = 0
@@ -93,3 +115,20 @@ class LCTF(Device):
 
         if status != f'{check_status}':
             raise ValueError('Failed to validate LCTF Status. No/unexpected response.')
+
+class CMOS():
+    def __init__(self):
+        pass
+
+    @property
+    def exposure(self):
+        return self._exposure
+
+    @exposure.setter
+    def exposure(self, exposure):
+        self._exposure = exposure
+        # Set actual hardware exposure
+
+    def capture(self, exposure=None):
+        exposure = self.exposure if exposure is None else exposure
+        pass
