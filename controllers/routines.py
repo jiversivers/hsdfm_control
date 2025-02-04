@@ -26,8 +26,6 @@ def update_plot(fig, ax, data_queue):
         do = [data[8] for data in data_queue]  # Dissolved Oxygen
         temp = [data[12] for data in data_queue]  # Temperature
 
-        print(f"Plotting {len(data_queue)} points")  # Debug print to check the data
-
         # Left Y-axis (Dissolved Oxygen)
         ax.plot(t, do, label='Dissolved Oxygen', color='b')
         ax.set_xlabel('Time (Seconds)')
@@ -36,6 +34,7 @@ def update_plot(fig, ax, data_queue):
 
         # Right Y-axis (Temperature)
         ax2 = ax.twinx()  # Create a second y-axis
+        ax2.clear()
         ax2.plot(t, temp, label='Temperature', color='r')
         ax2.set_ylabel('Temperature (°C)', color='r')
         ax2.tick_params(axis='y', labelcolor='r')
@@ -154,12 +153,15 @@ def record_do():
             # Write data to database
             cursor.execute("BEGIN TRANSACTION")
             for d in data:
-                cursor.execute(f"""
-                    INSERT INTO {study_name} (
-                    time_from_start, dissolved_oxygen, nanoamperes, temperature) 
-                    VALUES (?, ?, ?, ?)
-                    """, (d[7], d[8], d[10], d[12]))
-                data_queue.append(d)
+                if len(d) > 12:
+                    cursor.execute(f"""
+                        INSERT INTO {study_name} (
+                        time_from_start, dissolved_oxygen, nanoamperes, temperature) 
+                        VALUES (?, ?, ?, ?)
+                        """, (d[7], d[8], d[10], d[12]))
+                    data_queue.append(d)
+                else:
+                    messagebox.showwarning('Skipped', f'Malformed data:\n{d}')
             conn.commit()
 
             # Update plot
