@@ -6,10 +6,9 @@ class Device(serial.Serial):
         super().__init__(port, **kwargs)
         self.encoding = encoding
 
-    def read(self, bytes_to_read):
-        # Read from the device
-        bytes_read = super().read(bytes_to_read)
-        return bytes_read.decode(self.encoding)
+    def read(self, size=1):
+        out = super().read(size)
+        return out.decode(self.encoding, errors='ignore')
 
     def write(self, command):
         # Send to the device
@@ -23,27 +22,30 @@ class Device(serial.Serial):
 class DOProbe(Device):
     def __init__(self, port):
         super().__init__(port=port,
-                         baud_rate=115200,
+                         baudrate=115200,
                          bytesize=serial.EIGHTBITS,
                          parity=serial.PARITY_NONE,
                          stopbits=serial.STOPBITS_ONE,
                          xonxoff=False,
-                         rtsscts=False,
+                         rtscts=False,
                          dsrdtr=False)
 
         # Set controls for manual management
-        self.device.dtr = True
-        self.device.rts = True
+        self.dtr = True
+        self.rts = True
+        self.bytesize = serial.EIGHTBITS
 
-    def read(self, bytes_to_read):
+    def read(self, bytes_to_read='all'):
+        if bytes_to_read == 'all':
+            bytes_to_read = self.in_waiting
         out = super().read(bytes_to_read)
 
         out_lines = out.splitlines()
-        out_split = [line.split(':') for line in out_lines]
+        out_split = [line.split(';') for line in out_lines]
+        data = []
+        for out in out_split:
+            data.append([d for d in out if d])
 
-        max_len = max(len(line) for line in out_split)
-
-        data = [line + [''] * (max_len - len(line)) for line in out_split]
         return data
 
 
