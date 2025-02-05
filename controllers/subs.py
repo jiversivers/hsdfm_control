@@ -23,6 +23,12 @@ def update_plot(fig, ax, ax2, data_queue):
         do = [data[8] for data in data_queue]  # Dissolved Oxygen
         temp = [data[12] for data in data_queue]  # Temperature
 
+        # Ensure data is sorted by time
+        sorted_data = sorted(zip(t, do, temp), key=lambda x: x[0])
+
+        # Unpack sorted values
+        t, do, temp = zip(*sorted_data)
+
         # Left Y-axis (Dissolved Oxygen)
         ax.scatter(t, do, label='Dissolved Oxygen', color='b', marker='o')
         ax.set_xlabel('Time (Seconds)')
