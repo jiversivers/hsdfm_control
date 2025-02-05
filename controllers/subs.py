@@ -1,6 +1,6 @@
-from tkinter import messagebox
-
-from PIL._tkinter_finder import tk
+import tkinter as tk
+from tkinter import messagebox, filedialog, simpledialog
+import sqlite3
 from serial.tools import list_ports
 
 
@@ -88,3 +88,51 @@ def select_serial_port():
     port_selection_window.wait_window()
 
     return selected_port.get() if selected_port.get() else None
+
+
+def select_database():
+    """Prompt the user to select or create a database file."""
+    choice = messagebox.askyesno("Database Selection", "Do you want to create a new database?")
+
+    if choice:
+        # User wants to create a new database
+        study_db = filedialog.asksaveasfilename(
+            title="Save New Database",
+            defaultextension=".db",
+            filetypes=[("SQLite Files", "*.db"), ("All Files", "*.*")]
+        )
+    else:
+        # User wants to select an existing database
+        study_db = filedialog.askopenfilename(
+            title="Select Existing Database",
+            filetypes=[("SQLite Files", "*.db"), ("All Files", "*.*")]
+        )
+
+
+def select_study_table(db_path):
+    """Prompt the user to select an existing study table or create a new one."""
+    # Connect to the database and get the list of tables
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    tables = [row[0] for row in cursor.fetchall()]
+    conn.close()
+
+    # Add option to create a new table
+    tables.append("Create New Table...")
+
+    # Create a Tkinter dialog for selection
+    root = tk.Toplevel()
+    root.withdraw()  # Hide the main window
+
+    study_name = simpledialog.askstring(
+        "Select Study Table",
+        f"Existing tables:\n\n{', '.join(tables[:-1])}\n\n"
+        f"Enter a table name to create a new one, or select an existing one.",
+    )
+
+    if study_name and study_name not in tables[:-1]:
+        messagebox.showinfo("New Table", f"Creating new table: {study_name}")
+
+    return study_name
