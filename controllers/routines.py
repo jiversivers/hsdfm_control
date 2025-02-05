@@ -1,26 +1,22 @@
 from controllers import DOProbe
 import sqlite3
 import tkinter as tk
-from tkinter import filedialog, simpledialog, messagebox, ttk
+from tkinter import messagebox, ttk
 import time
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-from controllers.subs import select_serial_port, update_plot
+from controllers.subs import select_serial_port, update_plot, select_database, select_study_table
 
 
-def record_do():
+def record_do(port=None, study_db=None):
     root = tk.Toplevel()
     root.title("DO Probe Data")
 
     # Get user input
-    port = select_serial_port()
-    study_name = simpledialog.askstring("Input", "Enter the study name for the database table:")
-    study_db = filedialog.askopenfilename(title="Select Database File",
-                                          filetypes=[("SQLite Files", "*.db"), ("All Files", "*.*")])
-    if not study_db:
-        study_db = filedialog.asksaveasfilename(title="Save New Database", defaultextension=".db",
-                                                filetypes=[("SQLite Files", "*.db"), ("All Files", "*.*")])
+    port = select_serial_port() if port is None else port
+    study_db = select_database() if study_db is None else study_db
+    study_name = select_study_table()
 
     # Check if the user provided valid input
     if not port or not study_name or not study_db:
@@ -94,6 +90,15 @@ def record_do():
 
     conn.close()
     print('Probe stopped sending data. Recording closed and data saved.')
+
+    # Ask user if they want to record another study
+    retry = messagebox.askyesno("Continue?", "Would you like to record another study in the same database?")
+
+    if retry:
+        root.destroy()
+        record_do(port=port, study_db=study_db)
+    else:
+        root.destroy()
 
 
 def capture_images(exposures=None, wavelengths=None):
