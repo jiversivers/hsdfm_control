@@ -13,9 +13,10 @@ def convert_time_to_seconds(time_str):
         return 0  # If the time is malformed, return 0
 
 
-def update_plot(fig, ax, data_queue):
+def update_plot(fig, ax, ax2, data_queue):
     if len(data_queue) > 0:
         ax.clear()
+        ax2.clear()
 
         # Extract time, dissolved oxygen, and temperature from data_queue
         t = [convert_time_to_seconds(data[7]) for data in data_queue]  # Convert MM:SS to total seconds
@@ -23,15 +24,13 @@ def update_plot(fig, ax, data_queue):
         temp = [data[12] for data in data_queue]  # Temperature
 
         # Left Y-axis (Dissolved Oxygen)
-        ax.plot(t, do, label='Dissolved Oxygen', color='b')
+        ax.scatter(t, do, label='Dissolved Oxygen', color='b', marker='o')
         ax.set_xlabel('Time (Seconds)')
         ax.set_ylabel('Dissolved Oxygen (mg/L)', color='b')
         ax.tick_params(axis='y', labelcolor='b')
 
         # Right Y-axis (Temperature)
-        ax2 = ax.twinx()  # Create a second y-axis
-        ax2.clear()
-        ax2.plot(t, temp, label='Temperature', color='r')
+        ax2.scatter(t, temp, label='Temperature', color='r', marker='^')
         ax2.set_ylabel('Temperature (°C)', color='r')
         ax2.tick_params(axis='y', labelcolor='r')
 
@@ -107,6 +106,7 @@ def select_database():
             title="Select Existing Database",
             filetypes=[("SQLite Files", "*.db"), ("All Files", "*.*")]
         )
+    return study_db
 
 
 def select_study_table(db_path):
