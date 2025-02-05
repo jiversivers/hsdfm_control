@@ -16,7 +16,7 @@ def record_do(port=None, study_db=None):
     # Get user input
     port = select_serial_port() if port is None else port
     study_db = select_database() if study_db is None else study_db
-    study_name = select_study_table()
+    study_name = select_study_table(study_db)
 
     # Check if the user provided valid input
     if not port or not study_name or not study_db:
@@ -25,6 +25,7 @@ def record_do(port=None, study_db=None):
 
     # Prep plot
     fig, ax = plt.subplots(figsize=(8, 6))
+    ax2 = ax.twinx()
     canvas = FigureCanvasTkAgg(fig, master=root)
     canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
@@ -80,7 +81,7 @@ def record_do(port=None, study_db=None):
             conn.commit()
 
             # Update plot
-            update_plot(fig, ax, data_queue)
+            update_plot(fig, ax, ax2, data_queue)
             canvas.draw()
 
         else:
