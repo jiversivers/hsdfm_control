@@ -1,4 +1,5 @@
 import numpy as np
+from jupyter_server.extension.utils import get_metadata
 
 from controllers import DOProbe, CMOS, LCTF
 import sqlite3
@@ -9,7 +10,8 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from tifffile import tiff
 
-from controllers.subs import select_serial_port, update_plot, select_database, select_study_table
+from controllers.subs import get_metadata_from_user, select_serial_port, update_plot, select_database, \
+    select_study_table
 
 
 def record_do(port=None, study_db=None):
@@ -19,16 +21,22 @@ def record_do(port=None, study_db=None):
     # Get user input
     port = select_serial_port() if port is None else port
     study_db = select_database() if study_db is None else study_db
-    study_name = select_study_table(study_db)
 
-    # Check if the user provided valid input
-    if not port or not study_name or not study_db:
-        print("Error: All inputs (port, study name, and database) are required!")
+    if not study_db:
+        print("Error: A database file must be provided!")
         return
+
+    # Create metadata input form
+    metadata = get_metadata_from_user()
+
+    if not metadata["sample_name"]:
+        print("Error: Sample name is required!")
+        return
+
+    sample_name = metadata["sample_name"]
 
     # Prep plot
     fig, ax = plt.subplots(figsize=(8, 6))
-    ax2 = ax.twinx()
     canvas = FigureCanvasTkAgg(fig, master=root)
     canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
@@ -39,24 +47,22 @@ def record_do(port=None, study_db=None):
     progress_bar = ttk.Progressbar(root, length=300, mode='determinate', maximum=10)
     progress_bar.pack(pady=5)
 
-    # Make DO device object
+    # Initialize DO device object
     probe = DOProbe(port=port)
 
     # Connect to database
     conn = sqlite3.connect(study_db)
     cursor = conn.cursor()
 
-    # Make study table
-    cursor.execute(f"""
-            CREATE TABLE IF NOT EXISTS {study_name} (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            time DATETIME DEFAULT CURRENT_TIMESTAMP,
-            time_from_start TIMESTAMP DEFAULT NULL,
-            dissolved_oxygen INTEGER DEFAULT NULL,
-            nanoamperes INTEGER DEFAULT NULL,
-            temperature INTEGER DEFAULT NULL
-            )
-            """)
+    # Insert study metadata
+    cursor.execute("""
+        INSERT INTO dissolved_oxygen_study_table (
+            start_time, sample_name, solvent, hemoglobin_concentration_mg_mL,
+            microsphere_concentration_uL_mL, yeast_stock_added_uL_mL, yeast_concentration_mg_mL
+        ) VALUES (CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?)
+    """, tuple(metadata.values()))
+
+    sample_id = cursor.lastrowid  # Get the inserted study ID
 
     data_queue = []
     delay = 0
@@ -73,15 +79,18 @@ def record_do(port=None, study_db=None):
             cursor.execute("BEGIN TRANSACTION")
             for d in data:
                 if len(d) > 12:
-                    cursor.execute(f"""
-                        INSERT INTO {study_name} (
-                        time_from_start, dissolved_oxygen, nanoamperes, temperature) 
-                        VALUES (?, ?, ?, ?)
-                        """, (d[7], d[8], d[10], d[12]))
-                    cursor.execute(f"""SELECT time, dissolved_oxygen, temperature FROM {study_name}""")
+                    cursor.execute("""
+                        INSERT INTO dissolved_oxygen_records (
+                            sample_name, sample_id, time, dissolved_oxygen, nanoamperes, temperature
+                        ) VALUES (?, ?, CURRENT_TIMESTAMP, ?, ?, ?)
+                    """, (sample_name, sample_id, d[8], d[10], d[12]))
+
+                    cursor.execute(
+                        f"SELECT time, dissolved_oxygen, temperature FROM dissolved_oxygen_records WHERE sample_id = ?",
+                        (sample_id,))
                     data_queue = cursor.fetchall()
                 else:
-                    messagebox.showwarning('Skipped', f'Malformed data:\n{d}')
+                    print('Skipped', f'Malformed data:\n{d}')
             conn.commit()
 
             # Update plot
@@ -89,10 +98,9 @@ def record_do(port=None, study_db=None):
                 update_plot(fig, ax, data_queue)
                 canvas.draw()
             except Exception as e:
-                print(f'Failed to update plot: {e}')
+                print(f'Failed to update plot:\n{e}')
 
         else:
-            # Wait a second
             time.sleep(1)
             delay += 1
 
