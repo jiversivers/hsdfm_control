@@ -1,6 +1,9 @@
+import datetime
 import tkinter as tk
 from tkinter import messagebox, filedialog, simpledialog
 import sqlite3
+
+import numpy as np
 from serial.tools import list_ports
 
 
@@ -13,36 +16,47 @@ def convert_time_to_seconds(time_str):
         return 0  # If the time is malformed, return 0
 
 
-def update_plot(fig, ax, ax2, data_queue):
+def update_plot(fig, ax, data_queue):
     if len(data_queue) > 0:
         ax.clear()
-        ax2.clear()
+        ax2 = ax.twinx()
 
         # Extract time, dissolved oxygen, and temperature from data_queue
-        t = [convert_time_to_seconds(data[7]) for data in data_queue]  # Convert MM:SS to total seconds
-        do = [data[8] for data in data_queue]  # Dissolved Oxygen
-        temp = [data[12] for data in data_queue]  # Temperature
+        # Calculate pO2 for each reading
+        Hcc = 3.2e-2
+        R = 8314  # LPaK-1mol-1
+        m = 31.999  # g/mol
+        t0 = datetime.datetime.strptime(data_queue[0][0], '%Y-%m-%d %H:%M:%S')
+        times, do, T = zip(*data_queue)
+        times = [datetime.datetime.strptime(t, '%Y-%m-%d %H:%M:%S') - t0 for t in times]
+        t = np.asarray([t.total_seconds() for t in times])
+        do = np.asarray(do) / 1000 / m  # mol/L
+        T = np.asarray(T) + 273.15  # K
+        kH = Hcc / (R * T)  # molL-1Pa-1
+        pO2 = 7.5 * (do / kH) / 1000  # mmHg
 
         # Ensure data is sorted by time
-        sorted_data = sorted(zip(t, do, temp), key=lambda x: x[0])
-
+        sorted_data = sorted(zip(t, pO2), key=lambda x: x[0])
         # Unpack sorted values
-        t, do, temp = zip(*sorted_data)
+        t, pO2 = zip(*sorted_data)
+        t = np.asarray(t)
+        pO2 = np.asarray(pO2)
+
+        h = 2.7
+        p50 = 27
+        sO2 = 100 * (pO2 ** h) / ((p50 ** h) + (pO2 ** h))
 
         # Left Y-axis (Dissolved Oxygen)
-        ax.scatter(t, do, label='Dissolved Oxygen', color='b', marker='o')
+        ax.scatter(t, pO2, label='Oxygen Partial Pressure', color='b', marker='o')
         ax.set_xlabel('Time (Seconds)')
-        ax.set_ylabel('Dissolved Oxygen (mg/L)', color='b')
+        ax.set_ylabel('Oxygen Partial Pressure (mmHg)', color='b')
         ax.tick_params(axis='y', labelcolor='b')
+        ax.set_ylim(0, 160)
 
-        # Right Y-axis (Temperature)
-        ax2.scatter(t, temp, label='Temperature', color='r', marker='^')
-        ax2.set_ylabel('Temperature (°C)', color='r')
-        ax2.tick_params(axis='y', labelcolor='r')
-
-        # Add a legend
-        ax.legend(loc='upper left')
-        ax2.legend(loc='upper right')
+        ax2.scatter(t, sO2, label='Oxygen Saturation', color='r', marker='^')
+        ax2.set_xlabel('Time (Seconds)')
+        ax2.set_ylabel('Oxygen Saturation (%)', color='r')
+        ax2.set_ylim(0, 100)
 
         fig.canvas.draw()
 
