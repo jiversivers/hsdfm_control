@@ -75,14 +75,18 @@ def record_do(port=None, study_db=None):
                         time_from_start, dissolved_oxygen, nanoamperes, temperature) 
                         VALUES (?, ?, ?, ?)
                         """, (d[7], d[8], d[10], d[12]))
-                    data_queue.append(d)
+                    cursor.execute(f"""SELECT time, dissolved_oxygen, temperature FROM {study_name}""")
+                    data_queue = cursor.fetchall()
                 else:
                     messagebox.showwarning('Skipped', f'Malformed data:\n{d}')
             conn.commit()
 
             # Update plot
-            update_plot(fig, ax, ax2, data_queue)
-            canvas.draw()
+            try:
+                update_plot(fig, ax, data_queue)
+                canvas.draw()
+            except Exception as e:
+                print(f'Failed to update plot: {e}')
 
         else:
             # Wait a second
