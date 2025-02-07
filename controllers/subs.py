@@ -156,3 +156,36 @@ def select_study_table(db_path):
         messagebox.showinfo("New Table", f"Creating new table: {study_name}")
 
     return study_name
+
+
+def get_metadata_from_user():
+    """Prompt user for metadata fields in a single GUI window."""
+    root = tk.Tk()
+    root.title("Enter Study Metadata")
+    labels = [
+        "Sample Name", "Solvent", "Hemoglobin Concentration (mg/mL)",
+        "Microsphere Concentration (uL/mL)", "Yeast Stock Added (uL/mL)", "Yeast Concentration (mg/mL)"
+    ]
+    entries = []
+
+    for i, label in enumerate(labels):
+        tk.Label(root, text=label).grid(row=i, column=0)
+        entry = tk.Entry(root)
+        entry.grid(row=i, column=1)
+        entries.append(entry)
+
+    def submit():
+        global metadata
+        metadata = {
+            "sample_name": entries[0].get(),
+            "solvent": entries[1].get(),
+            "hemoglobin_concentration_mg_mL": float(entries[2].get() or 0),
+            "microsphere_concentration_uL_mL": float(entries[3].get() or 0),
+            "yeast_stock_added_uL_mL": float(entries[4].get() or 0),
+            "yeast_concentration_mg_mL": float(entries[5].get() or 0),
+        }
+        root.destroy()
+
+    tk.Button(root, text="Submit", command=submit).grid(row=len(labels), columnspan=2)
+    root.mainloop()
+    return metadata
