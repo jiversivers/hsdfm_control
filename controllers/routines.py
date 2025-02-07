@@ -1,10 +1,13 @@
-from controllers import DOProbe
+import numpy as np
+
+from controllers import DOProbe, CMOS, LCTF
 import sqlite3
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox, ttk, simpledialog, filedialog
 import time
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from tifffile import tiff
 
 from controllers.subs import select_serial_port, update_plot, select_database, select_study_table
 
@@ -106,8 +109,78 @@ def record_do(port=None, study_db=None):
         root.destroy()
 
 
-def capture_images(exposures=None, wavelengths=None):
-    tk.messagebox.showwarning('Not implemented')
+def focus_camera(cmos=None):
+    cmos = CMOS() if cmos is None else cmos
+    cmos.view(live=True)
+
+
+def capture_images(exposures=None, wavelengths=None, port=None, study_db=None):
+    cmos = CMOS()
+
+    # Get user input
+    port = select_serial_port() if port is None else port
+    study_db = select_database() if study_db is None else study_db
+    study_name = select_study_table(study_db)
+    # User wants to create a new database
+    image_name = filedialog.asksaveasfilename(
+        title="Save New Image Stack",
+        defaultextension=".tiff",
+        filetypes=[("TIFF", "*.tiff"), ("All Files", "*.*")]
+    )
+
+    # Check if the user provided valid input
+    if not port or not study_name or not study_db:
+        print("Error: All inputs (port, study name, and database) are required!")
+        return
+
+    lctf = LCTF(port=port)
+
+    conn = sqlite3.connect(study_db)
+    c = conn.cursor()
+    c.execute(f"""
+    CREATE TABLE IF NOT EXISTS {study_name}_index (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        image_name TEXT NOT NULL,
+        time DATETIME DEFAULT CURRENT_TIMESTAMP)""")
+    conn.commit()
+
+    c.execute(f"""
+    CREATE TABLE IF NOT EXISTS {study_name}_details (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        image_name TEXT NOT NULL,
+        exposure_time FLOAT NOT NULL,
+        lambda INT NOT NULL,
+        time DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (image_name) REFERENCES {study_name}_index (image_name)) """)
+    conn.commit()
+
+    c.execute(f"""INSERT INTO {study_name}_index (image_name) (?)""", (image_name,))
+    conn.commit()
+
+    c.execute(f"""SELECT * FROM {study_name}_index WHERE image_name={image_name}""")
+    image_metadata = c.fetchone()
+
+    if exposures is None and wavelengths is None:
+        exposures = [cmos.exposure_time]
+        wavelengths = [lctf.wavelength]
+    elif exposures is None:
+        exposures = [cmos.exposure_time] * len(wavelengths)
+    elif wavelengths is None:
+        wavelengths = [lctf.wavelength] * len(exposures)
+
+    frame = []
+    for tau, lam in zip(exposures, wavelengths):
+        lctf.wavelength = lam
+        cmos.exposure_time = tau
+        frame.append(cmos.capture())
+
+        c.execute(f"""
+        INSERT INTO {study_name}_details (image_name, exposure_time, lambda), (?, ?, ?)""", (image_name, tau, lam))
+    frame = np.array(frame)
+    tiff.imwrite(image_name, frame)
+
+
+    ## TODO: Add option to feed straight into analysis tools
 
 
 def synchronized_phantom_measurement():

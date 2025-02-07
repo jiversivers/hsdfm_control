@@ -1,5 +1,12 @@
 import time
+
+import numpy as np
 import serial
+from PIL import Image, ImageTk
+import tkinter as tk
+from hamamatsu.dcam import dcam, Stream, copy_frame
+import cv2
+
 
 class Device(serial.Serial):
     def __init__(self, port=None, encoding='utf-8', **kwargs):
@@ -118,19 +125,133 @@ class LCTF(Device):
         if status != f'{check_status}':
             raise ValueError('Failed to validate LCTF Status. No/unexpected response.')
 
-class CMOS():
-    def __init__(self):
-        pass
+
+class CMOS:
+    def __init__(self, camera_index=0):
+        # Instantiate DCAM and enter context
+        self.dcam = dcam
+        self.dcam.__enter__()
+        self.camera = self.dcam[camera_index]
+        self.camera.__enter__()
+
+        self.streaming = False
+        self.root = None
+
+    def __del__(self):
+        self.camera.__exit__(None, None, None)
+        self.dcam.__exit__(None, None, None)
+
+    # TODO: Add a getitem method to self.camera so that dict calls automatically open the context and all attributes of
+    #  the camera class will be accessible through cmos (like exposure time and binning currently are)
 
     @property
-    def exposure(self):
-        return self._exposure
+    def exposure_time(self):
+        with self.camera as camera:
+            return camera["exposure_time"].value
 
-    @exposure.setter
-    def exposure(self, exposure):
-        self._exposure = exposure
-        # Set actual hardware exposure
+    @exposure_time.setter
+    def exposure_time(self, exposure_time):
+        with self.camera as camera:
+            camera["exposure_time"] = exposure_time
 
-    def capture(self, exposure=None):
-        exposure = self.exposure if exposure is None else exposure
-        pass
+    @property
+    def binning(self):
+        with self.camera as camera:
+            return camera["binning"].value
+
+    @binning.setter
+    def binning(self, binning):
+        with self.camera as camera:
+            camera["binning"] = binning
+
+
+    def capture(self, nb_frames=1):
+        with Stream(self.camera, nb_frames) as stream:
+            self.camera.start()
+            frames = []
+            try:
+                for i, frame_buffer in enumerate(stream):
+                    frame = copy_frame(frame_buffer)
+                    frames.append(frame)
+            finally:
+                self.camera.stop()
+        if nb_frames == 1:
+            return frames[0]
+        return frames
+
+    def stream(self):
+        while self.streaming:
+            try:
+                yield self.capture(1)
+            except Exception as e:
+                print(f"Error during streaming: {e}")
+                self.streaming = False
+            finally:
+                self.camera.stop()
+
+    def view(self, live=True):
+        if not live:
+            frame = self.capture(nb_frames=1)
+            frame = self._display_frame(frame)
+            cv2.imshow("CMOS View", np.array(frame))
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
+            return
+
+        # Initialize Tkinter window
+        self.root = tk.Toplevel()  # Use Toplevel() so this can be called from other GUIs
+        self.root.title("CMOS Camera Stream")
+        self.root.geometry('800x800')
+
+        container = tk.Frame(self.root)
+        container.pack(pady=10)
+
+        # Create a label to display the camera feed
+        self.video_label = tk.Label(container, width=640, height=640)
+        self.video_label.pack()
+
+        # OK Button to stop streaming
+        stop_button = tk.Button(self.root, text="OK", command=self.stop_stream, width=10, height=2)
+        stop_button.pack(pady=10)
+
+        self.streaming = True  # Start streaming
+        self.update_frame()  # Start updating frames
+        self.root.mainloop()  # Start Tkinter event loop
+
+    cv2.destroyAllWindows()
+
+    def update_frame(self):
+        """Capture a frame from the camera and update the Tkinter label."""
+        if self.streaming:
+            try:
+                frame = next(self.stream())  # Get the next frame
+                frame = self._display_frame(frame)  # Convert for display
+
+                # Update Tkinter label with new frame
+                self.video_label.configure(image=frame)
+                self.video_label.image = frame  # Keep reference
+
+            except ValueError as e:
+                print(f"Error during streaming: {e}")
+
+            # Schedule the next frame update
+            self.root.after(10, self.update_frame)
+
+    def stop_stream(self):
+        """Stop the live stream and close the Tkinter window."""
+        self.streaming = False
+        self.camera.stop()
+        if self.root:
+            self.root.destroy()
+            self.root = None  # Reset the reference
+
+    def _display_frame(self, frame):
+        image = np.array(frame, dtype=np.uint8)
+
+        # Convert grayscale to BGR
+        if len(image.shape) == 2:
+            image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+
+        # Convert to PIL image and then to Tkinter-compatible format
+        image = Image.fromarray(image)
+        return ImageTk.PhotoImage(image)

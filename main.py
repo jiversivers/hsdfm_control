@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox
 
-from controllers.routines import record_do, capture_images, synchronized_phantom_measurement
+from controllers.routines import record_do, capture_images, synchronized_phantom_measurement, focus_camera
 
 
 def close_all():
@@ -26,6 +26,9 @@ button2.pack(pady=10)
 
 button3 = tk.Button(root, text="Synced Phantom Measuring", width=20, height=2, command=synchronized_phantom_measurement)
 button3.pack(pady=10)
+
+button4 = tk.Button(root, text="View CMOS", width=20, height=2, command=focus_camera)
+button4.pack(pady=10)
 
 # Add a Close button
 close_button = tk.Button(root, text="Exit", width=20, height=2, command=close_all)
